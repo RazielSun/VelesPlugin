@@ -1,0 +1,28 @@
+#include "/Engine/Public/Platform.ush"
+
+struct FInstanceTransformPayload
+{
+	float4 Location;
+	float4 Rotation;
+	float4 Scale;
+};
+
+uint3 GridSize;
+RWStructuredBuffer<FInstanceTransformPayload> OutInstancesBuffer;
+
+[numthreads(NUM_THREADS_X, NUM_THREADS_Y, NUM_THREADS_Z)]
+void DebugCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (all(DispatchThreadId < GridSize))
+	{
+		const int Index = DispatchThreadId.x * GridSize.y * GridSize.z + DispatchThreadId.y * GridSize.z + DispatchThreadId.z;
+
+		float4 Location = float4(0,0,0,1);
+		float4 Rotation = float4(0,0,0,1);
+		float4 Scale = float4(1,1,1,1);
+		
+		OutInstancesBuffer[Index].Location = Location;
+		OutInstancesBuffer[Index].Rotation = Rotation;
+		OutInstancesBuffer[Index].Scale = Scale;
+	}
+}

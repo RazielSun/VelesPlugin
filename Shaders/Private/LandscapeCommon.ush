@@ -1,0 +1,40 @@
+#pragma once
+
+#include "/Engine/Public/Platform.ush"
+
+static const float GHeightMax = 32768;
+static const float GHeightMin = -32768;
+
+float UnpackHeight(const float2 PackedHeight)
+{
+	return clamp(float(((int) round(PackedHeight.r * 255.0) << 8) | (int) round(PackedHeight.g * 255.0)), 0.0, 65536.0);
+}
+
+#define TERRAIN_ZSCALE (1.0f/128.0f)
+
+float ScaleHeight(const float InHeight, const float InLandscapeScaleZ)
+{
+	return (InHeight - GHeightMax) * InLandscapeScaleZ * TERRAIN_ZSCALE;
+}
+
+float SampleHeightMap(Texture2D Heightmap, const float2 Position, const float4 TextureScaleBias)
+{
+	int2 OutSize;
+	Heightmap.GetDimensions(OutSize.x, OutSize.y);
+
+	const float2 FloatPosition = floor(Position) + TextureScaleBias.zw / TextureScaleBias.xy;
+	const int2 IntPosition = int2(clamp(FloatPosition.x, 0, OutSize.x), clamp(FloatPosition.y, 0, OutSize.y));
+	const int2 MaxPosition = int2(clamp(IntPosition.x + 1, 0, OutSize.x), clamp(IntPosition.y + 1, 0, OutSize.y));
+
+	const float2 Alpha = saturate(Position - IntPosition);
+
+	const float HeightmapXMinYMin = UnpackHeight(Heightmap[IntPosition.xy]);
+	const float HeightmapXMaxYMin = UnpackHeight(Heightmap[int2(MaxPosition.x, IntPosition.y)]);
+	const float HeightmapXMinYMax = UnpackHeight(Heightmap[int2(IntPosition.x, MaxPosition.y)]);
+	const float HeightmapXMaxYMax = UnpackHeight(Heightmap[MaxPosition.xy]);
+
+	const float HeightYMin = HeightmapXMinYMin * (1.0 - Alpha.x) + HeightmapXMaxYMin * Alpha.x;
+	const float HeightYMax = HeightmapXMinYMax * (1.0 - Alpha.x) + HeightmapXMaxYMax * Alpha.x;
+
+	return HeightYMin * (1.0 - Alpha.y) + HeightYMax * Alpha.y;
+}

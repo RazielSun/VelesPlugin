@@ -1,0 +1,72 @@
+#include "/Engine/Public/Platform.ush"
+// #include "/Engine/Private/Random.ush"
+#include "LandscapeCommon.ush"
+
+Texture2D<float> DensityMapTexture;
+SamplerState DensityMapSampler;
+
+float4 Bounds;
+float4 PatternOffsetAndScale;
+// xy - Tiles, z - Elements
+uint3 NumSize;
+
+Buffer<float4> PatternBuffer;
+RWBuffer<float4> OutPointCloudBuffer;
+
+#if USE_HEIGHTFIELD
+Texture2D HeightfieldTexture;
+// SamplerState HeightfieldSampler;
+// float4 HeightfieldBounds;
+float4 HeightmapScaleBias;
+float3 HeightfieldLocation;
+float3 HeightfieldScale;
+#endif
+
+[numthreads(NUM_THREADS_X, NUM_THREADS_Y, NUM_THREADS_Z)]
+void GenerateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (!all(DispatchThreadId < NumSize))
+		return;
+	
+	uint Id = DispatchThreadId.z;
+	uint OutIndex = ((DispatchThreadId.x + DispatchThreadId.y * NumSize.x) * NumSize.z + Id) * 2;
+
+	//
+	float4 Item = PatternBuffer[Id];
+
+	// Position
+	float2 NormalizedXY = Item.xy + DispatchThreadId.xy;
+	float2 PositionXY = NormalizedXY * PatternOffsetAndScale.zw + PatternOffsetAndScale.xy;
+	float2 UV = (PositionXY - Bounds.xy) / (Bounds.zw - Bounds.xy);
+	float2 CheckedUV = saturate(UV);
+
+	// Range Test
+	if (!all(UV == CheckedUV))
+		return;
+	
+	// Threshold Test
+	const float Value = DensityMapTexture.SampleLevel(DensityMapSampler, CheckedUV, 0);
+	if (Value < 0.5)
+		return;
+
+	//
+	float4 OutPosition = float4(0, 0, 0, 0);
+	float4 OutNormal = float4(0, 0, 0, 0);
+	
+	{
+		float LocationZ = 0;
+#if USE_HEIGHTFIELD
+		float2 HeightmapPosition = (PositionXY - HeightfieldLocation.xy) / HeightfieldScale.xy;
+		float HeightSampled = SampleHeightMap(HeightfieldTexture, HeightmapPosition, HeightmapScaleBias);
+		LocationZ = ScaleHeight(HeightSampled, HeightfieldScale.z) + HeightfieldLocation.z;
+#endif
+
+		OutPosition = float4(PositionXY, LocationZ, 1);
+		
+		// @todo:
+		OutNormal = float4(0, 0, 0, 1);
+	}
+
+	OutPointCloudBuffer[OutIndex] = OutPosition;
+	OutPointCloudBuffer[OutIndex + 1] = OutNormal;
+}

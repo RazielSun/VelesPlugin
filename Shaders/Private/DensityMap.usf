@@ -1,0 +1,59 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> InMaskTexture;
+float4 InClampPowMul;
+
+#if USE_WEIGHTMAP
+Texture2D InWeightmapTexture;
+SamplerState InWeightmapSampler;
+float4 InWeightmapScaleBias;
+float4 InWeightmapChannel;
+#endif
+
+RWTexture2D<float> OutCombined;
+
+#if DRAW_DEBUG
+RWTexture2D<float> DebugTexture;
+#endif
+
+float InSize;
+
+[numthreads(NUM_THREADS_X, NUM_THREADS_Y, NUM_THREADS_Z)]
+void DensityMapCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Id = DispatchThreadId.xy;
+
+	if (!all(Id < InSize.xx))
+	{
+		return;
+	}
+
+	const float2 InvSize = 1.0 / InSize;
+	// UV
+	const float2 UV = float2(Id.xy) * InvSize;
+	
+	// Density
+	float MaskValue = 0.0f;
+#if USE_WEIGHTMAP
+	float2 WeightmapUV = UV;
+	float4 WeightmapColor = InWeightmapTexture.SampleLevel(InWeightmapSampler, WeightmapUV, 0) * InWeightmapChannel;
+	MaskValue = WeightmapColor.r + WeightmapColor.g + WeightmapColor.b + WeightmapColor.a;
+#else
+	MaskValue = InMaskTexture.Load(int3(Id, 0)).r;
+#endif
+
+	// Calc
+	const float Epsilon = 0.001f;
+	const float BtmValue = step(InClampPowMul.x - Epsilon, MaskValue);
+	const float TopValue = 1.0 - step(InClampPowMul.y + Epsilon, MaskValue);
+	MaskValue = pow(MaskValue * BtmValue * TopValue, InClampPowMul.z) * InClampPowMul.w;
+
+	const float FinalMaskValue = saturate(MaskValue);
+	const float Result = FinalMaskValue * OutCombined.Load(Id);
+
+	OutCombined[Id] = Result;
+
+#if DRAW_DEBUG
+	DebugTexture[Id] = FinalMaskValue;
+#endif
+}

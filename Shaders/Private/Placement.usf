@@ -1,0 +1,95 @@
+#include "/Engine/Public/Platform.ush"
+
+#define MAX_ANGLE_DEGREE 180.0f
+
+// COPY from Random.ush
+// @param xy should be a integer position (e.g. pixel position on the screen), repeats each 128x128 pixels
+// similar to a texture lookup but is only ALU
+// ~13 ALU operations (3 frac, 6 *, 4 mad)
+float PseudoRandom(float2 xy)
+{
+	float2 pos = frac(xy / 128.0f) * 128.0f + float2(-64.340622f, -72.465622f);
+	
+	// found by experimentation
+	return frac(dot(pos.xyx * pos.xyy, float3(20.390625f, 60.703125f, 2.4281209f)));
+}
+
+struct FInstanceTransformPayload
+{
+	float4 Location;
+	float4 Rotation;
+	float4 Scale;
+};
+
+Buffer<float4> PointCloudBuffer;
+
+RWStructuredBuffer<FInstanceTransformPayload> OutInstancesBuffer;
+
+uint NumElements;
+uint NumX;
+uint NumY;
+
+uint Seed;
+
+float2 InScale;
+float2 InYawRotation;
+
+float3 InLocationOffset;
+
+Buffer<float> AssetsProbabilityBuffer;
+uint NumAssets;
+float TotalAssetsProbability;
+
+[numthreads(NUM_THREADS_X, NUM_THREADS_Y, NUM_THREADS_Z)]
+void PlacementCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (DispatchThreadId.x >= NumX || DispatchThreadId.y >= NumY)
+		return;
+	
+	uint Id = DispatchThreadId.z;
+	if (Id >= NumElements)
+		return;
+	
+	uint Index = (DispatchThreadId.x + DispatchThreadId.y * NumX) * NumElements + Id;
+
+	float4 Location = PointCloudBuffer[Index * 2];
+	if (Location.w == 0) // This is not valid point
+	{
+		OutInstancesBuffer[Index].Location = Location; // setup 0 to W
+		return;
+	}
+	
+	float4 InNormal = PointCloudBuffer[Index * 2 + 1];
+	float3 Normal = normalize(float3(InNormal.x, InNormal.y, Normal.z));
+
+	// Scale
+	const float ScaleMin = InScale.x;
+	const float RandomScaleAmount = InScale.y - InScale.x;
+	const float RandomScale = PseudoRandom(Seed + Location.xy).x * RandomScaleAmount;
+	const float4 Scale = max(ScaleMin + RandomScale, 0.01);
+
+	// Yaw Rotation
+	const float RandomValueYaw = PseudoRandom(Seed * 2 + Location.xy);
+	const float RandomYaw = lerp(InYawRotation.x, InYawRotation.y, RandomValueYaw);
+	const float4 Rotation = float4(0, 0, RandomYaw, 0);
+
+	// Offset
+	Location.xyz += InLocationOffset * Scale.xyz;
+
+	// Asset
+	float RandomValueAsset = PseudoRandom(Seed * 3 + Location.xy) * TotalAssetsProbability;
+	for (uint AssetIndex = 0; AssetIndex < NumAssets; ++AssetIndex)
+	{
+		const float AssetProbability = AssetsProbabilityBuffer[AssetIndex];
+		if (AssetProbability >= RandomValueAsset)
+		{
+			Location.w = AssetIndex + 1;
+			break;
+		}
+		RandomValueAsset -= AssetProbability;
+	}
+	
+	OutInstancesBuffer[Index].Location = Location;
+	OutInstancesBuffer[Index].Rotation = Rotation;
+	OutInstancesBuffer[Index].Scale = Scale;
+}
