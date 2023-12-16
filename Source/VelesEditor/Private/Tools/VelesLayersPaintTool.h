@@ -82,7 +82,7 @@ public:
 };
 
 UCLASS()
-class UVelesLayersPaintTool : public UVelesLayersBaseTool, public IClickDragBehaviorTarget, public IHoverBehaviorTarget
+class UVelesLayersPaintTool : public UVelesLayersBaseTool, public IClickDragBehaviorTarget, public IHoverBehaviorTarget, public IMouseWheelBehaviorTarget
 {
 	GENERATED_BODY()
 
@@ -108,12 +108,18 @@ public:
 	virtual bool OnUpdateHover(const FInputDeviceRay& DevicePos) override;
 	virtual void OnEndHover() override {}
 
+	// IMouseWheelBehaviorTarget implementation
+	virtual FInputRayHit ShouldRespondToMouseWheel(const FInputDeviceRay& CurrentPos) override;
+	virtual void OnMouseWheelScrollUp(const FInputDeviceRay& CurrentPos) override;
+	virtual void OnMouseWheelScrollDown(const FInputDeviceRay& CurrentPos) override;
+
 protected:
 	UPROPERTY()
 	TObjectPtr<UVelesLayersPaintBrushProperties> Properties;
 	
 	/** Current state of the shift modifier toggle */
 	bool bShiftToggle = false;
+	bool bCtrlToggle = false;
 	
 	FInputDeviceRay LastDeviceRay = FInputDeviceRay(FRay());
 

@@ -13,7 +13,9 @@ NewActor_WorldScale(100, 100),
 CurrentTargetIndex(INDEX_NONE),
 BrushRadius(512.f),
 BrushOpacity(0.5f),
-BrushFalloff(0.5f)
+BrushFalloff(0.5f),
+bUseTargetValue(false),
+TargetValue(1.0f)
 {
 	//
 }

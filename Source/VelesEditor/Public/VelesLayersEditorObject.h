@@ -47,9 +47,15 @@ public:
 	UPROPERTY(Category="Brush", EditAnywhere, meta=(DisplayName="Falloff", ShowForTools="Paint", ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1"))
 	float BrushFalloff;
 
+	UPROPERTY(Category="Brush", EditAnywhere, meta=(DisplayName="Use Target Value", ShowForTools="Paint"))
+	bool bUseTargetValue;
+
+	UPROPERTY(Category="Brush", EditAnywhere, meta=(DisplayName="Target Value", ShowForTools="Paint", EditCondition="bUseTargetValue", ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1"))
+	float TargetValue;
+
 	//
 	void SetParent(UVelesLayersEditorMode* InParentMode)
 	{
-		ParentMode = InParentMode;
+		// ParentMode = InParentMode;
 	}
 };

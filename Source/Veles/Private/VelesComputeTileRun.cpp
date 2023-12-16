@@ -6,6 +6,7 @@
 FVelesComputeTileRun::FVelesComputeTileRun(int32 X, int32 Y) :
 	Coord(X, Y)
 	, WorldBounds(ForceInit)
+	, Pattern(nullptr)
 	, PatternOffsetAndScale(0, 0, 1, 1)
 	, PatternNumXY(0, 0)
 	, Seed(0)
@@ -19,7 +20,6 @@ FVelesComputeTileRun::FVelesComputeTileRun(int32 X, int32 Y) :
 	, bDebugDraw(false)
 	, LandscapeComponent(nullptr)
 	, HeightmapTexture(nullptr)
-	, Pattern(nullptr)
 	, GPUReadback(nullptr)
 {
 }

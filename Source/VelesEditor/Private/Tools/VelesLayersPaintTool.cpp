@@ -11,8 +11,10 @@
 #include "VelesLayersEditorObject.h"
 #include "BaseBehaviors/ClickDragBehavior.h"
 #include "BaseBehaviors/MouseHoverBehavior.h"
+#include "BaseBehaviors/MouseWheelBehavior.h"
 
 static const int UVelesLayersBaseBrushTool_ShiftModifier = 1;
+static const int UVelesLayersBaseBrushTool_CtrlModifier = 2;
 
 bool UVelesLayersPaintToolBuilder::CanBuildTool(const FToolBuilderState& SceneState) const
 {
@@ -43,35 +45,27 @@ void UVelesLayersPaintTool::Setup()
 	UInteractiveTool::Setup();
 
 	bShiftToggle = false;
+	bCtrlToggle = false;
 
 	Properties = NewObject<UVelesLayersPaintBrushProperties>(this);
 	AddToolPropertySource(Properties);
 
 	UClickDragInputBehavior* DragBehavior = NewObject<UClickDragInputBehavior>();
 	DragBehavior->Modifiers.RegisterModifier(UVelesLayersBaseBrushTool_ShiftModifier, FInputDeviceState::IsShiftKeyDown);
+	DragBehavior->Modifiers.RegisterModifier(UVelesLayersBaseBrushTool_CtrlModifier, FInputDeviceState::IsCtrlKeyDown);
 	DragBehavior->Initialize(this);
 	AddInputBehavior(DragBehavior);
 
 	UMouseHoverBehavior* HoverBehavior = NewObject<UMouseHoverBehavior>();
 	HoverBehavior->Modifiers.RegisterModifier(UVelesLayersBaseBrushTool_ShiftModifier, FInputDeviceState::IsShiftKeyDown);
+	HoverBehavior->Modifiers.RegisterModifier(UVelesLayersBaseBrushTool_CtrlModifier, FInputDeviceState::IsCtrlKeyDown);
 	HoverBehavior->Initialize(this);
 	AddInputBehavior(HoverBehavior);
 
-	// bShiftToggle = false;
-	// bCtrlToggle = false;
-	//
-	// // add input behaviors
-	// UClickDragInputBehavior* DragBehavior = NewObject<UClickDragInputBehavior>();
-	// DragBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_ShiftModifier, FInputDeviceState::IsShiftKeyDown);
-	// DragBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_CtrlModifier, FInputDeviceState::IsCtrlKeyDown);
-	// DragBehavior->Initialize(this);
-	// AddInputBehavior(DragBehavior);
-	//
-	// UMouseHoverBehavior* HoverBehavior = NewObject<UMouseHoverBehavior>();
-	// HoverBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_ShiftModifier, FInputDeviceState::IsShiftKeyDown);
-	// HoverBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_CtrlModifier, FInputDeviceState::IsCtrlKeyDown);
-	// HoverBehavior->Initialize(this);
-	// AddInputBehavior(HoverBehavior);
+	UMouseWheelInputBehavior* ZoomBehavior = NewObject<UMouseWheelInputBehavior>();
+	ZoomBehavior->Initialize(this);
+	ZoomBehavior->SetDefaultPriority(FInputCapturePriority::DEFAULT_TOOL_PRIORITY);	
+	AddInputBehavior(ZoomBehavior);
 }
 
 
@@ -138,6 +132,10 @@ void UVelesLayersPaintTool::OnUpdateModifierState(int ModifierID, bool bIsOn)
 	{
 		bShiftToggle = bIsOn;
 	}
+	else if (ModifierID == UVelesLayersBaseBrushTool_CtrlModifier)
+	{
+		bCtrlToggle = bIsOn;
+	}
 }
 
 FInputRayHit UVelesLayersPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos)
@@ -150,6 +148,53 @@ bool UVelesLayersPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
 	UpdateBrushLocation(DevicePos);
 	// UE_LOG(LogTemp, Warning, TEXT("OnUpdateHover %s %s SP %s"), *DevicePos.WorldRay.Origin.ToString(), *DevicePos.WorldRay.Direction.ToString(), *DevicePos.ScreenPosition.ToString());
 	return true;
+}
+
+FInputRayHit UVelesLayersPaintTool::ShouldRespondToMouseWheel(const FInputDeviceRay& CurrentPos)
+{
+	FInputRayHit ToReturn;
+	ToReturn.bHit = true;
+	return ToReturn;
+}
+
+void UVelesLayersPaintTool::OnMouseWheelScrollUp(const FInputDeviceRay& CurrentPos)
+{
+	UE_LOG(LogTemp, Warning, TEXT("UVelesLayersPaintTool::OnMouseWheelScrollUp"));
+
+	if (EdMode.IsValid() && EdMode->UISettings)
+	{
+		if (bCtrlToggle)
+		{
+			if (EdMode->UISettings->bUseTargetValue)
+				EdMode->UISettings->TargetValue = FMath::Clamp(EdMode->UISettings->TargetValue + 0.1f, 0, 1);
+			else
+				EdMode->UISettings->BrushOpacity = FMath::Clamp(EdMode->UISettings->BrushOpacity + 0.1f, 0, 1);
+		}
+		else
+		{
+			EdMode->UISettings->BrushRadius += 128.f;
+		}
+	}
+}
+
+void UVelesLayersPaintTool::OnMouseWheelScrollDown(const FInputDeviceRay& CurrentPos)
+{
+	UE_LOG(LogTemp, Warning, TEXT("UVelesLayersPaintTool::OnMouseWheelScrollDown"));
+
+	if (EdMode.IsValid() && EdMode->UISettings)
+	{
+		if (bCtrlToggle)
+		{
+			if (EdMode->UISettings->bUseTargetValue)
+				EdMode->UISettings->TargetValue = FMath::Clamp(EdMode->UISettings->TargetValue - 0.1f, 0, 1);
+			else
+				EdMode->UISettings->BrushOpacity = FMath::Clamp(EdMode->UISettings->BrushOpacity - 0.1f, 0, 1);
+		}
+		else
+		{
+			EdMode->UISettings->BrushRadius -= 128.f;
+		}
+	}
 }
 
 void UVelesLayersPaintTool::UpdateBrushLocation(const FInputDeviceRay& DevicePos)
@@ -247,6 +292,8 @@ void FVelesLayersToolStrokePaint::Apply(const FHitResult& InHit, bool bInvert)
 	const float TotalRadius = EdMode->UISettings->BrushRadius;
 	const float Radius = (1.0f - EdMode->UISettings->BrushFalloff) * TotalRadius;
 	const float Falloff = EdMode->UISettings->BrushFalloff * TotalRadius;
+	const bool bUseWeightTargetValue = EdMode->UISettings->bUseTargetValue;
+	const ToolTarget::CacheClass::DataType WeightTargetValue = ToolTarget::CacheClass::ClampValue(255.0f * EdMode->UISettings->TargetValue);
 
 	TArray<float> BrushAlpha;
 	BrushAlpha.SetNumUninitialized(SizeX*SizeY);
@@ -273,9 +320,12 @@ void FVelesLayersToolStrokePaint::Apply(const FHitResult& InHit, bool bInvert)
 	TArray<ToolTarget::CacheClass::DataType>* SourceDataArrayPtr = &Data;
 	TArray<ToolTarget::CacheClass::DataType> OriginalData;
 
-	this->Cache.GetOriginalData(X1, Y1, X2, Y2, OriginalData);
-	SourceDataArrayPtr = &OriginalData;
-
+	if (!bUseWeightTargetValue)
+	{
+		this->Cache.GetOriginalData(X1, Y1, X2, Y2, OriginalData);
+		SourceDataArrayPtr = &OriginalData;
+	}
+	
 	const float AdjustedStrength = 1.0f; // @todo: need?
 	
 	float PaintStrength = EdMode->UISettings->BrushOpacity * Pressure * AdjustedStrength;
@@ -301,14 +351,21 @@ void FVelesLayersToolStrokePaint::Apply(const FHitResult& InHit, bool bInvert)
 			const float PaintAmount = BrushValue * PaintStrength * 255;
 			auto& CurrentValue = DataScanline[X];
 			const auto& SourceValue = SourceDataScanline[X];
-	
-			if (bInvert)
+
+			if (bUseWeightTargetValue)
 			{
-				CurrentValue = ToolTarget::CacheClass::ClampValue(FMath::Min<int32>(SourceValue - FMath::RoundToInt(PaintAmount), CurrentValue));
+				CurrentValue = FMath::Lerp(CurrentValue, WeightTargetValue, PaintAmount / (AdjustedStrength * 255));
 			}
 			else
 			{
-				CurrentValue = ToolTarget::CacheClass::ClampValue(FMath::Max<int32>(SourceValue + FMath::RoundToInt(PaintAmount), CurrentValue));
+				if (bInvert)
+				{
+					CurrentValue = ToolTarget::CacheClass::ClampValue(FMath::Min<int32>(SourceValue - FMath::RoundToInt(PaintAmount), CurrentValue));
+				}
+				else
+				{
+					CurrentValue = ToolTarget::CacheClass::ClampValue(FMath::Max<int32>(SourceValue + FMath::RoundToInt(PaintAmount), CurrentValue));
+				}
 			}
 		}
 	}

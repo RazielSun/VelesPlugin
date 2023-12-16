@@ -106,4 +106,10 @@ protected:
 
 	//
 	void InitializeBrush();
+
+	//
+	bool bToolUpdated = false;
+	
+	void ForceRealTimeViewports(const bool bEnable);
+	void DisableOverrideViewports();
 };

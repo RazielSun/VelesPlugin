@@ -14,6 +14,8 @@
 
 ////////////////////////////////////////////////////////////////////////// 
 
+#include "LevelEditor.h"
+#include "SLevelViewport.h"
 #include "Tools/VelesLayersBaseTool.h"
 #include "Tools/VelesLayersPaintTool.h"
 #include "Tools/VelesLayersWorldDataTool.h"
@@ -66,11 +68,22 @@ void UVelesLayersEditorMode::Enter()
 	InitializeBrush();
 	UpdateSettings();
 	UpdateLayerPaintList();
+
+	// Force real-time viewports.  We'll back up the current viewport state so we can restore it when the
+	// user exits this mode.
+	const bool bWantRealTime = true;
+	ForceRealTimeViewports(bWantRealTime);
 }
 
 void UVelesLayersEditorMode::ModeTick(float DeltaTime)
 {
 	Super::ModeTick(DeltaTime);
+
+	if (bToolUpdated)
+	{
+		bToolUpdated = false;
+		DisableOverrideViewports();
+	}
 
 	if (CurrentToolMode == EVelesLayersToolMode::Modify)
 	{
@@ -88,8 +101,8 @@ void UVelesLayersEditorMode::ModeTick(float DeltaTime)
 			{
 				BrushMID->SetScalarParameterValue(TEXT("MaskRadiusRate"), ActualRadius);
 				BrushMID->SetScalarParameterValue(TEXT("MaskFalloffRate"), UISettings->BrushFalloff);
+				BrushMID->SetScalarParameterValue(TEXT("Opacity"), UISettings->bUseTargetValue ? UISettings->TargetValue : UISettings->BrushOpacity);
 			}
-				
 			
 			if (BrushComponent && !BrushComponent->IsRegistered())
 			{
@@ -118,6 +131,9 @@ void UVelesLayersEditorMode::Exit()
 	// Remove the brush
 	if (BrushComponent)
 		BrushComponent->UnregisterComponent();
+
+	// Restore real-time viewport state if we changed it
+	ForceRealTimeViewports(false);
 	
 	Super::Exit();
 }
@@ -128,9 +144,9 @@ void UVelesLayersEditorMode::BindCommands()
 
 	const FVelesLayersEditorModeCommands& Commands = FVelesLayersEditorModeCommands::Get();
 
-	RegisterTool(Commands.SetupTool, TEXT("Setup"), NewObject<UVelesLayersSetupToolBuilder>(this));
-	RegisterTool(Commands.PaintTool, TEXT("Paint"), NewObject<UVelesLayersPaintToolBuilder>(this));
-	RegisterTool(Commands.WorldDataTool, TEXT("WorldData"), NewObject<UVelesLayersWorldDataToolBuilder>(this));
+	RegisterTool(Commands.SetupTool, TEXT("Setup"), NewObject<UVelesLayersSetupToolBuilder>(this), EToolsContextScope::EdMode);
+	RegisterTool(Commands.PaintTool, TEXT("Paint"), NewObject<UVelesLayersPaintToolBuilder>(this), EToolsContextScope::EdMode);
+	RegisterTool(Commands.WorldDataTool, TEXT("WorldData"), NewObject<UVelesLayersWorldDataToolBuilder>(this), EToolsContextScope::EdMode);
 }
 
 void UVelesLayersEditorMode::CreateToolkit()
@@ -252,6 +268,8 @@ void UVelesLayersEditorMode::SetUseBrush(bool bInUseBrush)
 	
 	if (BrushComponent)
 		BrushComponent->SetVisibility(bUseBrush);
+
+	bToolUpdated = true;
 }
 
 void UVelesLayersEditorMode::SetBrushLocation(bool bInBrushTraceValid, const FVector& InBrushLocation)
@@ -290,6 +308,51 @@ void UVelesLayersEditorMode::InitializeBrush()
         	
 	// Get the default opacity from the material.
 	BrushMID->GetScalarParameterValue(OpacityParamName, DefaultBrushOpacity);
+}
+
+/** Forces all level editor viewports to realtime mode */
+void UVelesLayersEditorMode::ForceRealTimeViewports(const bool bEnable)
+{
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+	TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
+	if (LevelEditor.IsValid())
+	{
+		TArray<TSharedPtr<SLevelViewport>> Viewports = LevelEditor->GetViewports();
+		for (const TSharedPtr<SLevelViewport>& ViewportWindow : Viewports)
+		{
+			if (ViewportWindow.IsValid())
+			{
+				FEditorViewportClient& Viewport = ViewportWindow->GetAssetViewportClient();
+				const FText SystemDisplayName = LOCTEXT("RealtimeOverrideMessage_Veles", "Veles Plugin Mode");
+				if (bEnable)
+				{
+					Viewport.AddRealtimeOverride(bEnable, SystemDisplayName);
+				}
+				else
+				{
+					Viewport.RemoveRealtimeOverride(SystemDisplayName, false);
+				}
+			}
+		}
+	}
+}
+
+void UVelesLayersEditorMode::DisableOverrideViewports()
+{
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+	TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
+	if (LevelEditor.IsValid())
+	{
+		TArray<TSharedPtr<SLevelViewport>> Viewports = LevelEditor->GetViewports();
+		for (const TSharedPtr<SLevelViewport>& ViewportWindow : Viewports)
+		{
+			if (ViewportWindow.IsValid())
+			{
+				FEditorViewportClient& ViewportClient = ViewportWindow->GetAssetViewportClient();
+				ViewportClient.DisableOverrideEngineShowFlags();
+			}
+		}
+	}
 }
 
 #undef LOCTEXT_NAMESPACE
